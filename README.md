@@ -1,5 +1,7 @@
 # Yunxi TTS MCP
 
+English | [中文](#中文)
+
 Yunxi TTS MCP is a small MCP server for generating Chinese speech with `edge-tts`.
 It defaults to the Microsoft Edge voice `zh-CN-YunxiNeural` with gentle tuning for a lower, steadier sound:
 
@@ -258,5 +260,271 @@ Thanks to Claude for helping shape the feature ideas, voice selection, testing a
 Thanks to GPT / Codex for implementation, debugging, local and server deployment validation, OAuth remote MCP support, and Telegram voice-note integration.
 
 ## License
+
+MIT
+
+---
+
+# 中文
+
+[English](#yunxi-tts-mcp) | 中文
+
+Yunxi TTS MCP 是一个基于 `edge-tts` 的 MCP server，用来把文本生成中文语音文件。默认声线是 `zh-CN-YunxiNeural`，默认参数如下：
+
+- `voice`: `zh-CN-YunxiNeural`
+- `rate`: `-5%`
+- `pitch`: `-8Hz`
+- `volume`: `+0%`
+
+## 功能
+
+- `text_to_speech`: 输入文字，生成 MP3。
+- `text_to_voice_note`: 生成 MP3，再用 `ffmpeg` 转成 OGG/Opus，可选调用 Telegram Bot API `sendVoice` 发送语音条。
+- 支持 stdio MCP，适合本地 Claude Desktop、Codex、Gemini 等 MCP 客户端。
+- 支持 streamable HTTP remote MCP。
+- 支持可选 OAuth 授权页，连接密钥只从环境变量读取。
+- 设置 `TTS_PUBLIC_BASE_URL` 后，工具结果会返回可访问的音频 URL。
+
+## 环境要求
+
+- Python 3.11 或更新版本
+- 系统里可以从 `PATH` 调用 `ffmpeg`，用于 `text_to_voice_note`
+- 只有需要 Telegram `sendVoice` 时，才需要 Telegram bot token
+
+## 安装
+
+```bash
+git clone https://github.com/yanyan1115/yunxi-tts-mcp.git
+cd yunxi-tts-mcp
+python -m venv .venv
+./.venv/bin/python -m pip install -r requirements.txt
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/yanyan1115/yunxi-tts-mcp.git
+cd yunxi-tts-mcp
+python -m venv .venv
+.\.venv\Scripts\python -m pip install -r requirements.txt
+```
+
+## 快速测试
+
+```bash
+./.venv/bin/edge-tts --voice zh-CN-YunxiNeural --text "你好，我是云希。" --write-media output/test.mp3
+```
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\edge-tts --voice zh-CN-YunxiNeural --text "你好，我是云希。" --write-media output\test.mp3
+```
+
+## 工具
+
+### text_to_speech
+
+必填：
+
+- `text`: 要合成语音的文本
+
+可选：
+
+- `voice`: 默认 `zh-CN-YunxiNeural`
+- `rate`: 默认 `-5%`
+- `volume`: 默认 `+0%`
+- `pitch`: 默认 `-8Hz`
+- `output_dir`: 默认 `./output`
+- `filename`: 可选 MP3 文件名
+
+示例：
+
+```json
+{
+  "text": "你好，我是云希。",
+  "filename": "hello-yunxi.mp3"
+}
+```
+
+### text_to_voice_note
+
+必填：
+
+- `text`: 要合成语音的文本
+
+可选：
+
+- `chat_id`: Telegram chat ID。不传时只生成 MP3 和 OGG 文件。
+- `caption`: 可选 Telegram 语音条说明。
+- `voice`、`rate`、`volume`、`pitch`、`output_dir`、`filename`: 含义同 `text_to_speech`。
+
+工具会把 MP3 转成适合 Telegram voice-note 的 OGG/Opus：
+
+```bash
+ffmpeg -i input.mp3 -c:a libopus output.ogg
+```
+
+它调用的是 Telegram `sendVoice`，不是 `sendAudio`，所以 Telegram 会显示为语音消息。
+
+## 环境变量
+
+复制 `.env.example` 后填写你自己的值，或者在 shell 里导出环境变量。
+
+| 变量 | 用途 |
+| --- | --- |
+| `TTS_OUTPUT_DIR` | 生成 MP3/OGG 的输出目录，默认 `./output`。 |
+| `TTS_PUBLIC_BASE_URL` | 用于返回 `audio_url` 和 `voice_url` 的公开 URL，例如 `https://example.com`。 |
+| `TTS_TELEGRAM_BOT_TOKEN` | Telegram `sendVoice` 使用的 bot token。 |
+| `TTS_TELEGRAM_BOT_TOKEN_ENV` | 存放 bot token 的环境变量名，默认 `TTS_TELEGRAM_BOT_TOKEN`。 |
+| `MCP_HOST` | HTTP 绑定地址，默认 `127.0.0.1`。 |
+| `MCP_PORT` | HTTP 绑定端口，默认 `8891`。 |
+| `MCP_ALLOWED_HOSTS` | 传输安全使用的 host 白名单，多个值用英文逗号分隔。 |
+| `MCP_ALLOWED_ORIGINS` | 传输安全使用的 origin 白名单，多个值用英文逗号分隔。 |
+| `MCP_OAUTH_ENABLED` | 设为 `1` 时启用 remote MCP OAuth。 |
+| `MCP_OAUTH_CONNECT_SECRET` | OAuth 授权页里输入的连接密钥。 |
+| `MCP_OAUTH_ISSUER_URL` | OAuth issuer URL，通常是 `https://example.com`。 |
+| `MCP_OAUTH_RESOURCE_URL` | OAuth resource URL，通常是 `https://example.com/mcp`。 |
+| `MCP_OAUTH_STORE` | 本地 OAuth token store 路径，默认 `./oauth_store.json`。 |
+
+## stdio MCP
+
+通过 stdio 启动：
+
+```bash
+./.venv/bin/python tts_mcp_server.py
+```
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\python .\tts_mcp_server.py
+```
+
+Claude Desktop 配置示例：
+
+```json
+{
+  "mcpServers": {
+    "yunxi-tts": {
+      "command": "/opt/yunxi-tts-mcp/.venv/bin/python",
+      "args": ["/opt/yunxi-tts-mcp/tts_mcp_server.py"],
+      "env": {
+        "TTS_OUTPUT_DIR": "/opt/yunxi-tts-mcp/output",
+        "TTS_TELEGRAM_BOT_TOKEN": "YOUR_BOT_TOKEN"
+      }
+    }
+  }
+}
+```
+
+Windows 示例：
+
+```json
+{
+  "mcpServers": {
+    "yunxi-tts": {
+      "command": "C:\\path\\to\\yunxi-tts-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["C:\\path\\to\\yunxi-tts-mcp\\tts_mcp_server.py"]
+    }
+  }
+}
+```
+
+Codex 或 Gemini MCP 注册也使用同样的 command 和 args 思路，按客户端自己的配置格式调整即可：
+
+```json
+{
+  "name": "yunxi-tts",
+  "command": "/opt/yunxi-tts-mcp/.venv/bin/python",
+  "args": ["/opt/yunxi-tts-mcp/tts_mcp_server.py"],
+  "env": {
+    "TTS_OUTPUT_DIR": "/opt/yunxi-tts-mcp/output"
+  }
+}
+```
+
+运行内置 stdio smoke test：
+
+```bash
+./.venv/bin/python smoke_test.py
+```
+
+这个测试只生成本地 MP3，不会调用 Telegram。
+
+## Streamable HTTP MCP
+
+本地无 OAuth 启动：
+
+```bash
+MCP_HOST=127.0.0.1 MCP_PORT=8891 ./.venv/bin/python tts_mcp_server.py --transport streamable-http
+```
+
+也可以使用 wrapper：
+
+```bash
+./run_tts_mcp_http.sh
+```
+
+如果要放在 HTTPS 后面作为 remote connector 使用，请设置你自己的域名和密钥：
+
+```bash
+export TTS_PUBLIC_BASE_URL="https://example.com"
+export MCP_OAUTH_ENABLED=1
+export MCP_OAUTH_CONNECT_SECRET="YOUR_CONNECT_SECRET"
+export MCP_ALLOWED_HOSTS="example.com,example.com:*"
+export MCP_ALLOWED_ORIGINS="https://example.com"
+./run_tts_mcp_http.sh
+```
+
+反向代理示例在 `deploy/nginx-tts-mcp.conf`。请把 `example.com` 换成你的域名，并确保 TLS 由反向代理或隧道处理。
+
+Claude custom connector 示例：
+
+```text
+Name: Yunxi TTS
+Remote MCP server URL: https://example.com/mcp
+OAuth Client ID: leave empty
+OAuth Client Secret: leave empty
+```
+
+连接器打开授权页后，输入 `MCP_OAUTH_CONNECT_SECRET` 的值。
+
+## Telegram sendVoice
+
+用 BotFather 创建 bot，把 token 放进环境变量，只在确实要发送语音消息时传 `chat_id`：
+
+```bash
+export TTS_TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
+```
+
+工具调用示例：
+
+```json
+{
+  "text": "这是一条 Telegram 语音条测试。",
+  "chat_id": "YOUR_CHAT_ID",
+  "filename": "telegram-test"
+}
+```
+
+不传 `chat_id` 时，`text_to_voice_note` 只生成本地文件和可选公开 URL。
+
+## 安全注意事项
+
+- 不要提交真实 Telegram token、chat_id、OAuth secret、服务器 IP、真实域名、私人路径或部署日志。
+- `.env`、`oauth_store.json`、`output/`、`*.mp3`、`*.ogg` 都应保持在 git 之外。
+- HTTP 默认绑定到 `127.0.0.1`。公开访问时请放在可信 HTTPS 反向代理后面。
+- remote connector 的 `MCP_OAUTH_CONNECT_SECRET` 应使用高强度随机值。
+- 生成的音频属于用户内容。除非你确实想公开这些文件，否则不要公开服务整个 `output/` 目录。
+- 请保持 `ffmpeg`、Python 依赖和反向代理更新。
+
+## 致谢
+
+感谢 Claude 参与功能构思、声线选择、测试思路和 Telegram voice-note 流程设计。
+
+感谢 GPT / Codex 负责实现、调试、本地与服务器部署验证、OAuth remote MCP 和 Telegram voice-note 集成。
+
+## 许可证
 
 MIT
