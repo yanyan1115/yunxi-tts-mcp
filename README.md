@@ -26,7 +26,7 @@ It defaults to the Microsoft Edge voice `zh-CN-YunxiNeural` with gentle tuning f
 ## Install
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USER/yunxi-tts-mcp.git
+git clone https://github.com/yanyan1115/yunxi-tts-mcp.git
 cd yunxi-tts-mcp
 python -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
@@ -35,7 +35,7 @@ python -m venv .venv
 On Windows PowerShell:
 
 ```powershell
-git clone https://github.com/YOUR_GITHUB_USER/yunxi-tts-mcp.git
+git clone https://github.com/yanyan1115/yunxi-tts-mcp.git
 cd yunxi-tts-mcp
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
