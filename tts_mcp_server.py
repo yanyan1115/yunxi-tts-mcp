@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import secrets
+import shutil
 import sys
 import tempfile
 import time
@@ -55,6 +56,7 @@ EDGE_TTS_COMMAND = (
     if sys.platform == "win32"
     else Path(sys.executable).with_name("edge-tts")
 )
+FFMPEG_COMMAND = os.getenv("FFMPEG", "ffmpeg")
 
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
@@ -463,6 +465,54 @@ def _bot_token() -> str:
     return ""
 
 
+def _ffmpeg_available() -> bool:
+    return shutil.which(FFMPEG_COMMAND) is not None
+
+
+async def reencode_mp3_for_browser(raw_path: str | Path, output_path: str | Path) -> dict[str, Any]:
+    """Re-encode Edge TTS MP3 to a browser-friendly MP3 file."""
+    source = Path(raw_path).expanduser().resolve()
+    target = Path(output_path).expanduser().resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    process = await asyncio.create_subprocess_exec(
+        FFMPEG_COMMAND,
+        "-y",
+        "-i",
+        str(source),
+        "-vn",
+        "-map_metadata",
+        "-1",
+        "-ar",
+        "44100",
+        "-ac",
+        "1",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "96k",
+        str(target),
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await process.communicate()
+    if process.returncode != 0 or not target.exists() or target.stat().st_size == 0:
+        target.unlink(missing_ok=True)
+        error_text = stderr.decode("utf-8", errors="replace").strip()
+        output_text = stdout.decode("utf-8", errors="replace").strip()
+        details = error_text or output_text or "ffmpeg did not produce browser-friendly MP3 audio"
+        raise RuntimeError(details)
+
+    return {
+        "mp3_reencoded": True,
+        "mp3_codec": "libmp3lame",
+        "mp3_sample_rate": 44100,
+        "mp3_channels": 1,
+        "mp3_bitrate": "96k",
+    }
+
+
 async def synthesize_speech(
     text: str,
     voice: str = DEFAULT_VOICE,
@@ -479,6 +529,7 @@ async def synthesize_speech(
 
     target_dir = _resolve_output_dir(output_dir)
     audio_path = target_dir / _safe_mp3_filename(cleaned_text, filename)
+    raw_audio_path = target_dir / f".{audio_path.stem}.edge-{secrets.token_urlsafe(8)}.mp3"
 
     text_file = tempfile.NamedTemporaryFile(
         "w",
@@ -501,7 +552,7 @@ async def synthesize_speech(
             f"--volume={volume}",
             f"--pitch={pitch}",
             "--write-media",
-            str(audio_path),
+            str(raw_audio_path),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -510,12 +561,25 @@ async def synthesize_speech(
     finally:
         Path(text_file.name).unlink(missing_ok=True)
 
-    if process is None or process.returncode != 0 or not audio_path.exists() or audio_path.stat().st_size == 0:
+    if process is None or process.returncode != 0 or not raw_audio_path.exists() or raw_audio_path.stat().st_size == 0:
+        raw_audio_path.unlink(missing_ok=True)
         audio_path.unlink(missing_ok=True)
         error_text = stderr.decode("utf-8", errors="replace").strip()
         output_text = stdout.decode("utf-8", errors="replace").strip()
         details = error_text or output_text or "edge-tts did not produce audio"
         raise RuntimeError(details)
+
+    reencode_metadata: dict[str, Any] = {
+        "mp3_reencoded": False,
+        "mp3_reencode_note": "ffmpeg was not available; returned raw edge-tts MP3",
+    }
+    try:
+        if _ffmpeg_available():
+            reencode_metadata = await reencode_mp3_for_browser(raw_audio_path, audio_path)
+        else:
+            raw_audio_path.replace(audio_path)
+    finally:
+        raw_audio_path.unlink(missing_ok=True)
 
     result: dict[str, Any] = {
         "audio_path": str(audio_path),
@@ -525,6 +589,7 @@ async def synthesize_speech(
         "pitch": pitch,
         "characters": len(cleaned_text),
         "format": "mp3",
+        **reencode_metadata,
     }
     url = _audio_url(audio_path)
     if url:
